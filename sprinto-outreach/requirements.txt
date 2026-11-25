@@ -1,3 +1,14 @@
+# Project dependencies
 requests>=2.31
 python-dotenv>=1.0
 google-genai>=1.0
+pyhunter>=1.7          # only for contacts.find_contact(live=True)
+
+# General analysis set
+pandas
+numpy
+matplotlib
+seaborn
+openpyxl
+jupyter
+ipykernel

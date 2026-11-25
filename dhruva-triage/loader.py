@@ -1,20 +1,20 @@
 import csv
 from pathlib import Path
 
+ROOT = Path(__file__).parent
+FIELDS = ["id", "name", "stage", "sector", "hq", "founders", "model", "round_size_cr"]
+
 
 def load(path="data/applications.csv"):
     apps = []
-    with open(path, newline="") as f:
+    # utf-8-sig: tolerate a BOM from Excel exports; explicit so Windows doesn't fall back to cp1252.
+    with open(path, newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
-            apps.append({
-                "id": row["id"],
-                "name": row["name"],
-                "stage": row["stage"],
-                "sector": row["sector"],
-                "hq": row["hq"],
-                "founders": row["founders"],
-                "model": row["model"],
-                "round_size_cr": row["round_size_cr"],
-                "deck": Path("decks", row["id"] + ".txt").read_text(),
-            })
+            row = {(k or "").strip(): (v or "").strip() for k, v in row.items()}
+            absent = [k for k in FIELDS if k not in row]
+            if absent:
+                raise ValueError(f"{path}: missing column(s) {absent}")
+            deck = ROOT / "decks" / (row["id"] + ".txt")
+            apps.append({**{k: row[k] for k in FIELDS},
+                         "deck": deck.read_text(encoding="utf-8") if deck.exists() else ""})
     return apps
