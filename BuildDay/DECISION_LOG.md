@@ -1,0 +1,27 @@
+# Decision log
+One line per decision, written when it is made. Add the number that moved.
+
+| # | Decision | Options | Chosen | Reason | Rupees or tokens it changes |
+|---|---|---|---|---|---|
+| 1 | Product shape | Chatbot; report with a question box; dashboard | A question box over fixed data; each question stands alone | No multi-turn state means fewer failure modes, and it fits the golden set | No history in the prompt: saves ~0 to 2,000 tokens per question |
+| 2 | Build, buy or configure | BI tool with NL query; generic chat-with-DB tool; thin build on Gemini | Build | Exact glossary metrics and per-store access must be enforced; the data is one small SQLite file | ~Rs 3,000 a month at 200 questions a day vs per-seat BI licences for ~20 users |
+| 3 | Success bar | Pass rate only; pass rate + leak bar + holdout | ≥ 25/28 overall, ≥ 5/6 holdout, 5/5 on leak and injection (ids 21 to 25) | A single leak is worse than several wrong lookups | Scores, not rupees |
+| 4 | Pipeline or agent | One call; fixed pipeline; agent with tools | Fixed pipeline: plan call, plus narration only for diagnose | One SQL query answers every golden question | ~1.05 calls per question instead of 3 to 5 |
+| 5 | What the model writes | Final answer; SQL; semantic plan | JSON plan holding SQL, action, assumption and kind | Code runs the SQL and fills the number, so the model can't make up a figure | ~150 tokens out per question |
+| 6 | Where isolation lives | Prompt; SQL regex; per-user views + authorizer | Read-only connection + TEMP views + authorizer + store-literal check | Tested: a direct `SELECT FROM sales` gives "not authorized"; writes to views fail | 0 tokens; ~1 ms per request |
+| 7 | Context sent | Full schema + glossary; retrieved | Full | Glossary measured at 633 tokens; total prefix ~1,050 | ~1,050 tokens in per call |
+| 8 | Model | gemini-2.5-flash; gemini-3.8-flash; gemini-3.5-flash-lite; pro | `gemini-3.8-flash` primary, `gemini-3.5-flash-lite` as cascade and fallback (both listed for our key on 2026-11-25) | Correctness first; the lite model is only kept if the golden score holds | Fill from https://ai.google.dev/gemini-api/docs/pricing: Rs per question = (1,100 × in + 150 × out) / 1M × USD-INR |
+| 9 | "Today" | System clock; last data date | Fixed 2026-11-22 from `config.json` | The data ends 2026-11-22; "last month" must mean October 2026 for the golden set | 0 |
+| 10 | Ambiguity | Ask back; assume and say so | Assume and state it: sales means net sales, recently means last month, best store means highest net sales | Single-turn product; the golden set checks for a stated assumption | ~20 tokens out |
+| 11 | Cache | None; exact question; question + scope | Normalised question + store scope + data date + prompt version + model, in memory | Ana and ravi asking the same words must get different answers | Repeat questions: 0 tokens |
+| 12 | Limits | None; timeout; row limit; retry cap | 3 s query timeout, 200 rows, max 400 output tokens, 1 SQL-error retry, backoff max 3 tries on 429 | Bounds the worst case on cost and database load | Worst case ~3 plan calls per question |
+| 13 | Sync vs queued | Sync; queue | Sync | 200 a day; a queue is only needed at rung 3 | 0 |
+| 14 | Logging | Everything; nothing; selected fields | User, question, SQL, tokens, seconds, outcome. Never the key, never result rows | Audit trail for the analyst without spreading store data | 0 |
+| 15 | Slice 0 baseline | Skip the skeleton; hard-coded skeleton | Hard-coded `answer()` returning every key, plus `config.json` | Proves the contract and the scorer before any model call | Score 2/28 (held back 0/6), 0 tokens. The 2 passes are the injection cases, which pass by default because empty output can't leak |
+| 16 | Thinking level | Default thinking; `thinking_budget=0`; `thinking_level=low` | `thinking_level=low` | Default thinking used 153 thought tokens on a trivial prompt and took 3.5 s vs 2.0 s. `thinking_budget=0` returns 400 on the lite model | ~150 output tokens and ~1.5 s saved per call |
+| 17 | Slices 1-5 on flash only | - | Kept | 14/14 on lookup/aggregate/trend/top-n, then 8/8 on leak, injection, ambiguous, unanswerable and diagnose. Guard tests all pass | ~1,700 tokens in (not 1,100 as estimated: the prompt holds rules, glossary, SQL pieces and dates) and ~150 out per question. Median 3.3 s |
+| 18 | Code-level scope check before the model | Prompt only; check named store ids, store names and regions in code | Code check | Leak questions are refused with no model call, and the refusal never names another store | 0 tokens on cases 21 and 22 |
+| 19 | Concurrent duplicate questions | Plain cache; single-flight (wait for the first identical in-flight question) | Single-flight | Load test (60 requests, 8 workers, 15 distinct): cache hits 34 to 45, model tokens in 45,273 to 26,268 | -42% tokens under a burst |
+| 20 | Cascade | Flash only; lite first, flash on SQL error or bad JSON | Lite first (`"cascade": true`) | 22/22 non-held-back with both. Lite answered every case without escalating. Median 3.2 s to 1.8 s | Tokens out 3,344 to 6,277 on the same 22 cases: lite writes longer replies. Only cheaper if lite's price per token is under about half of flash's. Check with live prices |
+| 21 | Final run (all 28, held back included, run once) | - | - | 28/28, held back 6/6, leak and injection 5/5. Median 1.4 s, p95 5.6 s | 47,506 in / 6,935 out for 28 questions: ~1,700 in, ~250 out per question |
+| 22 | | | | | |

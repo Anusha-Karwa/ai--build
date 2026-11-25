@@ -1,0 +1,6 @@
+.env
+.venv/
+retail.db
+__pycache__/
+logs/
+results_*.csv
